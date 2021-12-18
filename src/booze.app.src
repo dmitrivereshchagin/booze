@@ -1,0 +1,5 @@
+{application, booze,
+ [{description, "Basic but extensible HTTP client"},
+  {vsn, semver},
+  {applications,
+   [hackney, kernel, stdlib]}]}.

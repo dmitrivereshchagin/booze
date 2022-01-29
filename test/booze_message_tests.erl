@@ -2,75 +2,95 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-request1_test() ->
-    Req = booze_message:request(<<"http://example.com">>),
-    ?assertEqual(<<"GET">>, booze_message:method(Req)),
-    ?assertEqual(<<"http://example.com">>, booze_message:uri(Req)),
-    ?assertEqual([], booze_message:headers(Req)),
-    ?assertEqual(<<>>, booze_message:body(Req)).
+%%%===================================================================
+%%% Test cases
+%%%===================================================================
 
-request2_test() ->
-    Req = booze_message:request(<<"HEAD">>, <<"http://example.com">>),
-    ?assertEqual(<<"HEAD">>, booze_message:method(Req)),
-    ?assertEqual(<<"http://example.com">>, booze_message:uri(Req)),
-    ?assertEqual([], booze_message:headers(Req)),
-    ?assertEqual(<<>>, booze_message:body(Req)).
+create_request_test() ->
+    Requests =
+        [booze_message:request("GET", "http://example.com"),
+         booze_message:request("GET", "http://example.com", []),
+         booze_message:request("GET", "http://example.com", [], <<>>)],
+    [begin
+         ?assertEqual("GET", booze_message:method(Request)),
+         ?assertEqual("http://example.com", booze_message:uri(Request)),
+         ?assertEqual([], booze_message:headers(Request)),
+         ?assertEqual(<<>>, booze_message:body(Request))
+     end || Request <- Requests].
 
-request3_test() ->
-    Req = booze_message:request(<<"GET">>, <<"http://example.com">>, [{<<"X-Answer">>, <<"42">>}]),
-    ?assertEqual(<<"GET">>, booze_message:method(Req)),
-    ?assertEqual(<<"http://example.com">>, booze_message:uri(Req)),
-    ?assertEqual([{<<"X-Answer">>, <<"42">>}], booze_message:headers(Req)),
-    ?assertEqual(<<>>, booze_message:body(Req)).
+create_response_test() ->
+    Responses =
+        [booze_message:response(200),
+         booze_message:response(200, []),
+         booze_message:response(200, [], <<>>)],
+    [begin
+         ?assertEqual(200, booze_message:status(Response)),
+         ?assertEqual([], booze_message:headers(Response)),
+         ?assertEqual(<<>>, booze_message:body(Response))
+     end || Response <- Responses].
 
-request4_test() ->
-    Req = booze_message:request(<<"POST">>, <<"http://example.com">>, [], <<"Hello">>),
-    ?assertEqual(<<"POST">>, booze_message:method(Req)),
-    ?assertEqual(<<"http://example.com">>, booze_message:uri(Req)),
-    ?assertEqual([], booze_message:headers(Req)),
-    ?assertEqual(<<"Hello">>, booze_message:body(Req)).
+message_with_no_headers_test() ->
+    Msg = message_with_headers([]),
+    ?assertEqual([], booze_message:headers(Msg)),
+    ?assertEqual([], booze_message:header_values(<<"name">>, Msg)),
+    ?assertNot(booze_message:has_header(<<"name">>, Msg)).
 
-set_method_test() ->
-    Req0 = booze_message:request(<<"http://example.com">>),
-    Req1 = booze_message:set_method(<<"HEAD">>, Req0),
-    ?assertEqual(<<"HEAD">>, booze_message:method(Req1)).
+message_with_single_header_test() ->
+    Msg = message_with_headers([{<<"name">>, <<"value">>}]),
+    ?assertEqual([{<<"name">>, <<"value">>}], booze_message:headers(Msg)),
+    ?assertEqual([<<"value">>], booze_message:header_values(<<"name">>, Msg)),
+    ?assertEqual([<<"value">>], booze_message:header_values(<<"NAME">>, Msg)),
+    ?assert(booze_message:has_header(<<"name">>, Msg)),
+    ?assert(booze_message:has_header(<<"NAME">>, Msg)).
 
-set_uri_test() ->
-    Req0 = booze_message:request(<<"http://example.com">>),
-    Req1 = booze_message:set_uri(<<"http://example.org">>, Req0),
-    ?assertEqual(<<"http://example.org">>, booze_message:uri(Req1)).
-
-set_headers_test() ->
-    Req0 = booze_message:request(<<"http://example.com">>),
-    Req1 = booze_message:set_headers([{<<"X-Answer">>, <<"42">>}], Req0),
-    ?assertEqual([{<<"X-Answer">>, <<"42">>}], booze_message:headers(Req1)).
-
-set_body_test() ->
-    Req0 = booze_message:request(<<"http://example.com">>),
-    Req1 = booze_message:set_body(<<"Hello">>, Req0),
-    ?assertEqual(<<"Hello">>, booze_message:body(Req1)).
-
-add_header_test() ->
-    Req0 = booze_message:request(<<"http://example.com">>),
-    Req1 = booze_message:set_headers([{<<"x-foo">>, <<"foo">>}], Req0),
-    Req2 = booze_message:add_header(<<"X-FOO">>, <<"foo">>, Req1),
-    ?assertEqual([{<<"X-FOO">>, <<"foo">>},
-                  {<<"x-foo">>, <<"foo">>}], booze_message:headers(Req2)).
+add_header_with_multiple_values_test() ->
+    Msg1 = message_with_headers([]),
+    ?assertEqual([], booze_message:headers(Msg1)),
+    Msg2 = booze_message:add_header(<<"name">>, <<"value1">>, Msg1),
+    ?assertEqual([{<<"name">>, <<"value1">>}], booze_message:headers(Msg2)),
+    ?assertEqual([<<"value1">>], booze_message:header_values(<<"name">>, Msg2)),
+    Msg3 = booze_message:add_header(<<"name">>, <<"value2">>, Msg2),
+    ?assertEqual([{<<"name">>, <<"value1">>},
+                  {<<"name">>, <<"value2">>}], booze_message:headers(Msg3)),
+    ?assertEqual([<<"value1">>,
+                  <<"value2">>], booze_message:header_values(<<"name">>, Msg3)).
 
 remove_header_test() ->
-    Req0 = booze_message:request(<<"http://example.com">>),
-    Req1 = booze_message:set_headers([{<<"X-FOO">>, <<"foo">>},
-                                      {<<"x-foo">>, <<"foo">>}], Req0),
-    Req2 = booze_message:remove_header(<<"X-Foo">>, Req1),
-    ?assertEqual([], booze_message:headers(Req2)).
+    Msg1 = message_with_headers([{<<"name">>, <<"value1">>},
+                                 {<<"NAME">>, <<"value2">>}]),
+    Msg2 = booze_message:remove_header(<<"name">>, Msg1),
+    ?assertEqual([], booze_message:headers(Msg2)).
 
-response_test() ->
-    Resp = booze_message:response(200, [{<<"X-Answer">>, <<"42">>}], <<"Hello">>),
-    ?assertEqual(200, booze_message:code(Resp)),
-    ?assertEqual([{<<"X-Answer">>, <<"42">>}], booze_message:headers(Resp)),
-    ?assertEqual(<<"Hello">>, booze_message:body(Resp)).
+set_new_header_value_test() ->
+    Msg1 = message_with_headers([]),
+    ?assertEqual([], booze_message:headers(Msg1)),
+    Msg2 = booze_message:set_header(<<"name">>, <<"value">>, Msg1),
+    ?assertEqual([{<<"name">>, <<"value">>}], booze_message:headers(Msg2)).
 
-set_code_test() ->
-    Resp0 = booze_message:response(200, [], <<>>),
-    Resp1 = booze_message:set_code(404, Resp0),
-    ?assertEqual(404, booze_message:code(Resp1)).
+replace_existing_header_value_test() ->
+    Msg1 = message_with_headers([{<<"name">>, <<"value1">>}]),
+    ?assertEqual([{<<"name">>, <<"value1">>}], booze_message:headers(Msg1)),
+    Msg2 = booze_message:set_header(<<"name">>, <<"value2">>, Msg1),
+    ?assertEqual([{<<"name">>, <<"value2">>}], booze_message:headers(Msg2)).
+
+header_line_test() ->
+    Msg = message_with_headers([{<<"name">>, <<"value1">>},
+                                {<<"NAME">>, <<"value2">>}]),
+    ?assertEqual(<<"value1, value2">>,
+                 booze_message:header_line(<<"name">>, Msg)).
+
+request_target_test_() ->
+    [begin
+         Req = booze_message:request("GET", URI),
+         ?_assertEqual(Target, booze_message:target(Req))
+     end || {URI, Target} <- [{"http://example.com?name=ferret", "/?name=ferret"},
+                              {"http://example.com", "/"},
+                              {"/?name=ferret", "/?name=ferret"},
+                              {"/over/there", "/over/there"}]].
+
+%%%===================================================================
+%%% Helper functions
+%%%===================================================================
+
+message_with_headers(Headers) ->
+    booze_message:response(200, Headers).
